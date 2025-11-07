@@ -1,0 +1,13 @@
+{
+  "manifest_version": 3,
+  "name": "LEGAL_HOLD_TEMPLATE Extractor – ST Legal",
+  "description": "Capture LEGAL_HOLD_TEMPLATE_ID and associated template name from fetch/XHR JSON responses and show in a Starbucks-branded popup.",
+  "version": "3.2.1",
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["content.js"],
+      "run_at": "document_start"
+    }
+  ]
+}
