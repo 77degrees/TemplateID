@@ -1,14 +1,15 @@
 {
   "manifest_version": 3,
-  "name": "LEGAL_HOLD_TEMPLATE Extractor – ST Legal",
-  "description": "Capture LEGAL_HOLD_TEMPLATE_ID and associated template name from fetch/XHR JSON responses and show in a Starbucks-branded popup.",
-  "version": "3.2.1",
+  "name": "Legal Hold Template ID Extractor",
+  "description": "Extracts and displays legal hold template IDs and inferred names from JSON network traffic.",
+  "version": "1.1.0",
+  "permissions": [],
+  "host_permissions": [
+    "<all_urls>"
+  ],
   "content_scripts": [
     {
-      "matches": [
-        "https://*.starbucks.com/*",
-       "https://starbucks.com/*"
-     ],
+      "matches": ["<all_urls>"],
       "js": ["content.js"],
       "run_at": "document_start"
     }
