@@ -236,7 +236,10 @@
       refresh();
 
       shadow.getElementById('downloadCsv').addEventListener('click', () => {
-        const rows = Array.from(foundIds.values()).map(id => [id, idToName.get(id) || '']);
+        const rows = Array.from(foundIds.values())
+          .map(id => ({ id, name: idToName.get(id) || '' }))
+          .sort((a, b) => a.id.localeCompare(b.id, undefined, { sensitivity: 'base' }))
+          .map(({ id, name }) => [id, name]);
         const csv = ['Template ID,Template Name', ...rows.map(([i, n]) => {
           const esc = (s) => `"${String(s).replace(/"/g, '""')}"`;
           return `${esc(i)},${esc(n)}`;
