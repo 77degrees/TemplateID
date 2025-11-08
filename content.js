@@ -295,7 +295,6 @@
 
       (function enableDrag() {
         const drag = shadow.getElementById('drag');
-        const controller = new AbortController();
         let sx = 0, sy = 0, ox = 0, oy = 0, dragging = false;
         drag.addEventListener('mousedown', (e) => {
           dragging = true;
@@ -311,11 +310,11 @@
           const dy = e.clientY - sy;
           host.style.right = `${Math.max(8, ox - dx)}px`;
           host.style.bottom = `${Math.max(8, oy - dy)}px`;
-        }, { signal: controller.signal });
-        window.addEventListener('mouseup', () => dragging = false, { signal: controller.signal });
+        });
+        window.addEventListener('mouseup', () => dragging = false);
         window.addEventListener('keydown', (e) => {
           if (TOGGLE_HOTKEY(e)) host.classList.toggle('hidden');
-        }, { signal: controller.signal });
+        });
       })();
     })();
 
