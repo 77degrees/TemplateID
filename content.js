@@ -3,6 +3,18 @@
     if (window.__LH_TEMPLATE_V3__) return;
     window.__LH_TEMPLATE_V3__ = true;
 
+    /**********************
+     * Configuration Flags
+     **********************/
+    const DEBUG = false; // Set true for console diagnostics
+    const BODY_CHAR_LIMIT = 2_000_000;
+    const PREFILTER_SUBSTRINGS = ['legal', 'template']; // simple heuristic
+    const MAX_OBJECTS = 250_000; // safety ceiling for walk
+    const CLEAR_ON_UNLOAD = true;
+
+    /**********************
+     * Matching Patterns
+     **********************/
     const ID_KEY = /legal[_\-]?hold[_\-]?template[_\-]?id/i;
     const NAME_KEYS = [
       /^template[_\-]?(name|title|label)$/i,
@@ -10,33 +22,47 @@
       /^display[_\-]?name$/i,
       /^title$/i,
       /^label$/i,
-      /^name$/i,
+      /^name$/i
     ];
     const NAME_EXCLUDES = /(user|file|path|folder|dir|owner|group|env|host|machine)/i;
-    const BODY_CHAR_LIMIT = 2_000_000;
+
     const TOGGLE_HOTKEY = (e) => e.ctrlKey && e.altKey && e.key.toLowerCase() === 'l';
 
+    /**********************
+     * Data Structures
+     **********************/
     const foundIds = new Set();
     const idToName = new Map();
-    const listeners = new Set();
-    const notify = () => listeners.forEach(fn => { try { fn(); } catch {} });
 
-    function addMapping(id, name) {
-      if (!id) return;
-      const sId = String(id).trim();
-      let sName = (name ?? '').trim();
-      if (NAME_EXCLUDES.test(sName)) sName = '';
-      if (sId) {
-        if (!idToName.has(sId) && sName) idToName.set(sId, sName);
-        foundIds.add(sId);
-        notify();
-      }
+    // Single debounced refresh mechanism
+    let needsRender = false;
+    function scheduleRender() {
+      if (needsRender) return;
+      needsRender = true;
+      requestAnimationFrame(() => {
+        needsRender = false;
+        if (panelHost && !panelHost.classList.contains('hidden')) renderTable();
+        updateCount();
+      });
     }
 
+    /**********************
+     * Utility Logging
+     **********************/
+    function log(...args) {
+      if (DEBUG) console.log('[LH Template]', ...args);
+    }
+
+    /**********************
+     * ID / Name Extraction
+     **********************/
     function findIdKeys(obj) {
       const ids = [];
       for (const [k, v] of Object.entries(obj)) {
-        if (ID_KEY.test(k) && (typeof v === 'string' || typeof v === 'number')) ids.push(String(v));
+        if (ID_KEY.test(k) && (typeof v === 'string' || typeof v === 'number')) {
+          const s = String(v).trim();
+          if (s) ids.push(s);
+        }
       }
       return ids;
     }
@@ -52,56 +78,107 @@
       return '';
     }
 
+    function addMapping(id, name) {
+      if (!id) return;
+      const trimmedId = String(id).trim();
+      if (!trimmedId) return;
+      let trimmedName = (name || '').trim();
+      if (trimmedName && NAME_EXCLUDES.test(trimmedName)) trimmedName = '';
+      let changed = false;
+      if (!foundIds.has(trimmedId)) {
+        foundIds.add(trimmedId);
+        changed = true;
+      }
+      if (trimmedName && !idToName.has(trimmedId)) {
+        idToName.set(trimmedId, trimmedName);
+        changed = true;
+      }
+      if (changed) scheduleRender();
+    }
+
+    /**********************
+     * JSON Parsing
+     **********************/
+    function prefilterLikelyRelevant(text) {
+      if (!PREFILTER_SUBSTRINGS.length) return true;
+      const lower = text.slice(0, 20000).toLowerCase();
+      return PREFILTER_SUBSTRINGS.some(s => lower.includes(s));
+    }
+
     function parseJsonSafely(text) {
       try {
         if (!text || typeof text !== 'string') return null;
         if (BODY_CHAR_LIMIT && text.length > BODY_CHAR_LIMIT) return null;
+        if (!prefilterLikelyRelevant(text)) return null;
         const cleaned = text.trim().replace(/^\)\]\}',?/, '');
         return JSON.parse(cleaned);
-      } catch { return null; }
+      } catch {
+        return null;
+      }
     }
 
+    /**********************
+     * Graph Walk
+     **********************/
     function walk(rootObj) {
       if (!rootObj || typeof rootObj !== 'object') return;
-      const stack = [];
-      // Each stack frame: { obj, parents }
-      stack.push({ obj: rootObj, parents: [] });
+      const visited = new WeakSet();
+      const stack = [{ obj: rootObj, inheritedName: '' }];
+      let processed = 0;
+
       while (stack.length) {
-        const { obj, parents } = stack.pop();
+        const frame = stack.pop();
+        const obj = frame.obj;
         if (!obj || typeof obj !== 'object') continue;
+        if (visited.has(obj)) continue;
+        visited.add(obj);
+        processed++;
+        if (processed > MAX_OBJECTS) {
+          log('Traversal aborted: MAX_OBJECTS limit.');
+          break;
+        }
+
         if (Array.isArray(obj)) {
           for (let i = obj.length - 1; i >= 0; i--) {
-            stack.push({ obj: obj[i], parents });
+            const child = obj[i];
+            if (child && typeof child === 'object') {
+              stack.push({ obj: child, inheritedName: frame.inheritedName });
+            }
           }
           continue;
         }
+
         const ids = findIdKeys(obj);
-        const name = findNameCandidate(obj);
+        const localName = findNameCandidate(obj);
+        const effectiveName = localName || frame.inheritedName;
         if (ids.length) {
-          const inherited = name || parents.map(findNameCandidate).reverse().find(Boolean) || '';
-          ids.forEach(id => addMapping(id, name || inherited));
+          for (const id of ids) addMapping(id, effectiveName);
         }
-        // Avoid repeated array allocations: reuse parents array with push/pop
-        // But since stack is LIFO, we can safely use parents.concat(obj) for each child
-        // However, to avoid allocations, we can push the new parent chain only when needed
-        const nextParents = parents.length < 20 ? parents.concat(obj) : [...parents, obj]; // limit chain length for safety
+
+        const nextInherited = localName || frame.inheritedName;
         for (const v of Object.values(obj)) {
           if (v && typeof v === 'object') {
-            stack.push({ obj: v, parents: nextParents });
+            stack.push({ obj: v, inheritedName: nextInherited });
           }
         }
       }
     }
 
+    /**********************
+     * Panel UI
+     **********************/
+    let panelHost = null;
+    let bodyEl = null;
+    let countEl = null;
+
     function buildPanel() {
-      if (!document.documentElement) {
-        if (document.readyState === 'loading') {
-          document.addEventListener('DOMContentLoaded', buildPanel, { once: true });
-        }
-        return;
-      }
+      if (panelHost) return panelHost;
+      if (!document.documentElement) return null;
+
       const host = document.createElement('div');
       host.id = 'lh-template-v3-shadow-host';
+      host.setAttribute('role', 'region');
+      host.setAttribute('aria-label', 'Legal Hold Template Panel');
       Object.assign(host.style, {
         all: 'initial',
         position: 'fixed',
@@ -137,6 +214,7 @@
           user-select: none;
           cursor: move;
         }
+        .hdr button:focus, .btns button:focus { outline: 2px solid #1e3932; outline-offset: 2px; }
         .title { font-weight: 600; font-size: 14px; }
         .spacer { flex: 1 }
         .pill { background: rgba(255,255,255,0.25); padding: 2px 8px; border-radius: 999px; font-size: 12px; }
@@ -152,6 +230,7 @@
           cursor: pointer;
         }
         button:hover { background: #f1f9f6; }
+        button:active { background: #e3f2ec; }
         .body {
           padding: 8px;
           display: grid;
@@ -179,7 +258,7 @@
           text-overflow: ellipsis;
         }
         .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
-        .foot { color: #6b6b6b; font-size: 11px; padding: 0 8px 8px; }
+        .foot { color: #6b6b6b; font-size: 11px; }
         .hidden { display: none !important; }
       `;
       shadow.appendChild(style);
@@ -190,151 +269,175 @@
         <div class="hdr" id="drag">
           <div class="title">Starbucks Legal Hold Templates</div>
           <div class="spacer"></div>
-          <div class="pill" id="count">0</div>
+          <div class="pill" id="count" aria-live="polite">0</div>
           <div class="btns">
-            <button id="downloadCsv">Download CSV</button>
-            <button id="clear">Clear</button>
-            <button id="collapse">Collapse</button>
-            <button id="close">Close</button>
+            <button id="downloadCsv" aria-label="Download CSV">Download CSV</button>
+            <button id="clear" aria-label="Clear list">Clear</button>
+            <button id="collapse" aria-label="Collapse table">Collapse</button>
+            <button id="close" aria-label="Close panel">Close</button>
           </div>
         </div>
-        <div class="body" id="body"></div>
+        <div class="body" id="body" role="table" aria-label="Template IDs"></div>
         <div class="foot">Ctrl + Alt + L to toggle | © Kyle – Starbucks Legal</div>
       `;
       shadow.appendChild(panel);
 
-      const bodyEl = shadow.getElementById('body');
-      const countEl = shadow.getElementById('count');
+      bodyEl = shadow.getElementById('body');
+      countEl = shadow.getElementById('count');
 
-      function renderHeader() {
-        const idHead = document.createElement('div');
-        const nameHead = document.createElement('div');
-        const actHead = document.createElement('div');
-        idHead.textContent = 'Template ID';
-        nameHead.textContent = 'Template Name';
-        actHead.textContent = 'Actions';
-        idHead.className = 'head';
-        nameHead.className = 'head';
-        actHead.className = 'head';
-        bodyEl.appendChild(idHead);
-        bodyEl.appendChild(nameHead);
-        bodyEl.appendChild(actHead);
+      enableDrag(host, shadow.getElementById('drag'));
+      wireButtons(host, shadow);
+
+      renderTable();
+      updateCount();
+
+      panelHost = host;
+      return host;
+    }
+
+    function renderHeader() {
+      if (!bodyEl) return;
+      const idHead = document.createElement('div');
+      const nameHead = document.createElement('div');
+      const actHead = document.createElement('div');
+      idHead.textContent = 'Template ID';
+      nameHead.textContent = 'Template Name';
+      actHead.textContent = 'Actions';
+      idHead.className = 'head';
+      nameHead.className = 'head';
+      actHead.className = 'head';
+      bodyEl.appendChild(idHead);
+      bodyEl.appendChild(nameHead);
+      bodyEl.appendChild(actHead);
+    }
+
+    function renderTable() {
+      if (!bodyEl) return;
+      bodyEl.innerHTML = '';
+      renderHeader();
+
+      const rows = Array.from(foundIds.values())
+        .map(id => ({ id, name: idToName.get(id) || '' }))
+        .sort((a, b) => a.id.localeCompare(b.id, undefined, { sensitivity: 'base' }));
+
+      for (const { id, name } of rows) {
+        const idCell = document.createElement('div');
+        idCell.className = 'cell mono';
+        idCell.title = id;
+        idCell.textContent = id;
+
+        const nameCell = document.createElement('div');
+        nameCell.className = 'cell';
+        nameCell.title = name || '(unknown)';
+        nameCell.textContent = name || '—';
+
+        const actCell = document.createElement('div');
+        actCell.style.display = 'flex';
+        actCell.style.gap = '6px';
+
+        const copyBtn = document.createElement('button');
+        copyBtn.textContent = 'Copy';
+        copyBtn.setAttribute('aria-label', `Copy ID ${id}`);
+        copyBtn.addEventListener('click', () => {
+          navigator.clipboard.writeText(`${id},${name ?? ''}`).catch(() => {});
+        });
+        actCell.appendChild(copyBtn);
+
+        bodyEl.appendChild(idCell);
+        bodyEl.appendChild(nameCell);
+        bodyEl.appendChild(actCell);
       }
+    }
 
-      function refresh() {
-        bodyEl.innerHTML = '';
-        renderHeader();
+    function updateCount() {
+      if (countEl) countEl.textContent = String(foundIds.size);
+    }
 
-        const rows = Array.from(foundIds.values())
-          .map(id => ({ id, name: idToName.get(id) || '' }))
-          .sort((a, b) => a.id.localeCompare(b.id, undefined, { sensitivity: 'base' }));
-
-        countEl.textContent = String(rows.length);
-
-        for (const { id, name } of rows) {
-          const idCell = document.createElement('div');
-          idCell.className = 'cell mono';
-          idCell.title = id;
-          idCell.textContent = id;
-
-          const nameCell = document.createElement('div');
-          nameCell.className = 'cell';
-          nameCell.title = name || '(unknown)';
-          nameCell.textContent = name || '—';
-
-          const actCell = document.createElement('div');
-          actCell.style.display = 'flex';
-          actCell.style.gap = '6px';
-
-          const copyBtn = document.createElement('button');
-          copyBtn.textContent = 'Copy';
-          copyBtn.addEventListener('click', () =>
-            navigator.clipboard.writeText(`${id},${name ?? ''}`).catch(() => {})
-          );
-          actCell.appendChild(copyBtn);
-
-          bodyEl.appendChild(idCell);
-          bodyEl.appendChild(nameCell);
-          bodyEl.appendChild(actCell);
-        }
-      }
-
-      listeners.add(refresh);
-      refresh();
-
-      shadow.getElementById('downloadCsv').addEventListener('click', () => {
-        const rows = Array.from(foundIds.values())
-          .map(id => ({ id, name: idToName.get(id) || '' }))
-          .sort((a, b) => a.id.localeCompare(b.id, undefined, { sensitivity: 'base' }))
-          .map(({ id, name }) => [id, name]);
-        const csv = ['Template ID,Template Name', ...rows.map(([i, n]) => {
-          const esc = (s) => `"${String(s).replace(/"/g, '""')}"`;
-          return `${esc(i)},${esc(n)}`;
-        })].join('\n');
-        const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `Starbucks_LegalHoldTemplates_${new Date().toISOString().replace(/[:.]/g, '-')}.csv`;
-        // Use document.body if available, else document.documentElement, else shadow host
-        const parent = document.body || document.documentElement || host;
-        parent.appendChild(a);
-        a.click();
-        parent.removeChild(a);
-        URL.revokeObjectURL(url);
-      });
-
+    function wireButtons(host, shadow) {
+      shadow.getElementById('downloadCsv').addEventListener('click', downloadCsv);
       shadow.getElementById('clear').addEventListener('click', () => {
         foundIds.clear();
         idToName.clear();
-        refresh();
+        scheduleRender();
       });
-
       shadow.getElementById('collapse').addEventListener('click', (e) => {
         bodyEl.classList.toggle('hidden');
         e.target.textContent = bodyEl.classList.contains('hidden') ? 'Expand' : 'Collapse';
       });
-
       shadow.getElementById('close').addEventListener('click', () => {
         host.classList.add('hidden');
       });
-
-      (function enableDrag() {
-        const drag = shadow.getElementById('drag');
-        let sx = 0, sy = 0, ox = 0, oy = 0, dragging = false;
-        drag.addEventListener('mousedown', (e) => {
-          dragging = true;
-          sx = e.clientX; sy = e.clientY;
-          const r = host.getBoundingClientRect();
-          ox = window.innerWidth - r.right;
-          oy = window.innerHeight - r.bottom;
-          e.preventDefault();
-        });
-        window.addEventListener('mousemove', (e) => {
-          if (!dragging) return;
-          const dx = e.clientX - sx;
-          const dy = e.clientY - sy;
-          host.style.right = `${Math.max(8, ox - dx)}px`;
-          host.style.bottom = `${Math.max(8, oy - dy)}px`;
-        });
-        window.addEventListener('mouseup', () => dragging = false);
-        window.addEventListener('keydown', (e) => {
-          if (TOGGLE_HOTKEY(e)) host.classList.toggle('hidden');
-        });
-      })();
     }
-    buildPanel();
-      window.addEventListener('keydown', (e) => {
-        if (TOGGLE_HOTKEY(e)) host.classList.toggle('hidden');
+
+    function downloadCsv() {
+      const rows = Array.from(foundIds.values())
+        .map(id => ({ id, name: idToName.get(id) || '' }))
+        .sort((a, b) => a.id.localeCompare(b.id, undefined, { sensitivity: 'base' }))
+        .map(({ id, name }) => [id, name]);
+      const csv = ['Template ID,Template Name', ...rows.map(([i, n]) => {
+        const esc = (s) => `"${String(s).replace(/"/g, '""')}"`;
+        return `${esc(i)},${esc(n)}`;
+      })].join('\n');
+      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `Starbucks_LegalHoldTemplates_${new Date().toISOString().replace(/[:.]/g, '-')}.csv`;
+      const parent = document.body || document.documentElement || panelHost;
+      parent.appendChild(a);
+      a.click();
+      parent.removeChild(a);
+      URL.revokeObjectURL(url);
+    }
+
+    function enableDrag(host, dragHandle) {
+      let sx = 0, sy = 0, ox = 0, oy = 0, dragging = false;
+      dragHandle.addEventListener('mousedown', (e) => {
+        dragging = true;
+        sx = e.clientX; sy = e.clientY;
+        const r = host.getBoundingClientRect();
+        ox = window.innerWidth - r.right;
+        oy = window.innerHeight - r.bottom;
+        e.preventDefault();
+      });
+      window.addEventListener('mousemove', (e) => {
+        if (!dragging) return;
+        const dx = e.clientX - sx;
+        const dy = e.clientY - sy;
+        host.style.right = `${Math.max(8, ox - dx)}px`;
+        host.style.bottom = `${Math.max(8, oy - dy)}px`;
+      });
+      window.addEventListener('mouseup', () => dragging = false);
+    }
+
+    window.addEventListener('keydown', (e) => {
+      if (TOGGLE_HOTKEY(e)) {
+        if (!panelHost) buildPanel();
+        if (panelHost) {
+          panelHost.classList.toggle('hidden');
+          if (!panelHost.classList.contains('hidden')) {
+            scheduleRender();
+          }
+        }
+      }
+    });
+
+    function ensurePanelReady() {
+      if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', () => buildPanel(), { once: true });
+      } else {
+        buildPanel();
+      }
+    }
+    ensurePanelReady();
+
+    if (CLEAR_ON_UNLOAD) {
+      window.addEventListener('beforeunload', () => {
+        foundIds.clear();
+        idToName.clear();
       });
     }
 
-    // Wait for DOM to be ready before building panel
-    if (document.readyState === 'loading') {
-      document.addEventListener('DOMContentLoaded', buildPanel);
-    } else {
-      buildPanel();
-    }
     (function hookFetch() {
       const origFetch = window.fetch;
       if (!origFetch) return;
@@ -348,9 +451,10 @@
             const json = parseJsonSafely(txt);
             if (json) walk(json);
           }
-        } catch {}
+        } catch (err) { log('fetch hook error', err); }
         return res;
       };
+      Object.assign(window.fetch, origFetch);
     })();
 
     (function hookXHR() {
@@ -366,7 +470,7 @@
             } else return;
             const json = parseJsonSafely(text);
             if (json) walk(json);
-          } catch {}
+          } catch (err) { log('xhr hook error', err); }
         });
         return origSend.apply(this, arguments);
       };
