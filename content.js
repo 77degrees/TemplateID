@@ -60,16 +60,36 @@
       } catch { return null; }
     }
 
-    function walk(obj, parents = []) {
-      if (!obj || typeof obj !== 'object') return;
-      if (Array.isArray(obj)) return obj.forEach(o => walk(o, parents));
-      const ids = findIdKeys(obj);
-      const name = findNameCandidate(obj);
-      if (ids.length) {
-        const inherited = name || parents.map(findNameCandidate).reverse().find(Boolean) || '';
-        ids.forEach(id => addMapping(id, name || inherited));
+    function walk(rootObj) {
+      if (!rootObj || typeof rootObj !== 'object') return;
+      const stack = [];
+      // Each stack frame: { obj, parents }
+      stack.push({ obj: rootObj, parents: [] });
+      while (stack.length) {
+        const { obj, parents } = stack.pop();
+        if (!obj || typeof obj !== 'object') continue;
+        if (Array.isArray(obj)) {
+          for (let i = obj.length - 1; i >= 0; i--) {
+            stack.push({ obj: obj[i], parents });
+          }
+          continue;
+        }
+        const ids = findIdKeys(obj);
+        const name = findNameCandidate(obj);
+        if (ids.length) {
+          const inherited = name || parents.map(findNameCandidate).reverse().find(Boolean) || '';
+          ids.forEach(id => addMapping(id, name || inherited));
+        }
+        // Avoid repeated array allocations: reuse parents array with push/pop
+        // But since stack is LIFO, we can safely use parents.concat(obj) for each child
+        // However, to avoid allocations, we can push the new parent chain only when needed
+        const nextParents = parents.length < 20 ? parents.concat(obj) : [...parents, obj]; // limit chain length for safety
+        for (const v of Object.values(obj)) {
+          if (v && typeof v === 'object') {
+            stack.push({ obj: v, parents: nextParents });
+          }
+        }
       }
-      Object.values(obj).forEach(v => (v && typeof v === 'object') && walk(v, parents.concat(obj)));
     }
 
     (function buildPanel() {
