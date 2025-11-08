@@ -94,6 +94,12 @@
     }
 
     function buildPanel() {
+      if (!document.documentElement) {
+        if (document.readyState === 'loading') {
+          document.addEventListener('DOMContentLoaded', buildPanel, { once: true });
+        }
+        return;
+      }
       const host = document.createElement('div');
       host.id = 'lh-template-v3-shadow-host';
       Object.assign(host.style, {
@@ -300,19 +306,24 @@
           dragging = true;
           sx = e.clientX; sy = e.clientY;
           const r = host.getBoundingClientRect();
-          ox = r.right; oy = r.bottom;
+          ox = window.innerWidth - r.right;
+          oy = window.innerHeight - r.bottom;
           e.preventDefault();
         });
         window.addEventListener('mousemove', (e) => {
           if (!dragging) return;
           const dx = e.clientX - sx;
           const dy = e.clientY - sy;
-          host.style.right = `${Math.max(8, ox + dx)}px`;
-          host.style.bottom = `${Math.max(8, oy + dy)}px`;
+          host.style.right = `${Math.max(8, ox - dx)}px`;
+          host.style.bottom = `${Math.max(8, oy - dy)}px`;
         });
         window.addEventListener('mouseup', () => dragging = false);
+        window.addEventListener('keydown', (e) => {
+          if (TOGGLE_HOTKEY(e)) host.classList.toggle('hidden');
+        });
       })();
-
+    }
+    buildPanel();
       window.addEventListener('keydown', (e) => {
         if (TOGGLE_HOTKEY(e)) host.classList.toggle('hidden');
       });
@@ -324,7 +335,6 @@
     } else {
       buildPanel();
     }
-
     (function hookFetch() {
       const origFetch = window.fetch;
       if (!origFetch) return;
@@ -344,12 +354,7 @@
     })();
 
     (function hookXHR() {
-      const origOpen = XMLHttpRequest.prototype.open;
       const origSend = XMLHttpRequest.prototype.send;
-      XMLHttpRequest.prototype.open = function (m, u, a, usr, pw) {
-
-        return origOpen.apply(this, arguments);
-      };
       XMLHttpRequest.prototype.send = function (body) {
         this.addEventListener('load', function () {
           try {
