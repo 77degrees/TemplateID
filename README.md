@@ -2,7 +2,7 @@
 
 Extract and catalog “Legal Hold Template” IDs from any web app you use. This extension observes JSON network traffic in the current tab, finds fields that look like legal hold template identifiers, infers human-readable names when possible, and shows them in a floating, draggable panel. Export everything to CSV in a click.
 
-> Note: The UI text and CSV filename currently reference “Starbucks Legal” for internal use. You can change the branding by editing the display strings in `content.js`.
+> Note: The UI text and CSV filename currently reference “Legal” for internal use. You can change the branding by editing the display strings in `content.js`.
 
 ---
 
@@ -76,7 +76,7 @@ Chrome deprecated simple CRX sideloading for general users. For enterprise:
    - Inferred Template Name (when available)
    - Per-row “Copy” button (copies `ID,Name`)
 4. Use “Download CSV” to export all rows:
-   - Filename format: `Starbucks_LegalHoldTemplates_YYYY-MM-DDTHH-MM-SSZ.csv`
+   - Filename format: `Exterro_LegalHoldTemplates_YYYY-MM-DDTHH-MM-SSZ.csv`
 5. “Clear” removes all currently collected results (per tab/page session).
 6. “Collapse” hides/shows the table content while keeping the header visible.
 7. “Close” hides the panel (use hotkey to bring it back).
@@ -99,7 +99,7 @@ Chrome deprecated simple CRX sideloading for general users. For enterprise:
 - `PREFILTER_SUBSTRINGS`: Cheap text prefilter before parsing JSON (default: `['legal', 'template']`).
 - `MAX_OBJECTS`: Safety cap while traversing large JSON graphs (default: 250,000 objects).
 - `CLEAR_ON_UNLOAD`: Clear collected IDs when navigating away (default: `true`).
-- UI Branding: search for “Starbucks Legal” strings and adjust to your needs.
+- UI Branding: search for “Legal” strings and adjust to your needs.
 
 ---
 
@@ -169,4 +169,4 @@ TBD. If this is internal-only, add a suitable notice or license. If open source,
 
 ## Credits
 
-Built by Kyle for Starbucks Legal. Refactors and documentation by contributors.
+Built by Kyle for Legal. Refactors and documentation by contributors.
