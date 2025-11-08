@@ -1,6 +1,7 @@
 (function injectLegalHoldExtractor() {
   const install = function install() {
-    if (window.__LH_TEMPLATE_V3__) return; window.__LH_TEMPLATE_V3__ = true;
+    if (window.__LH_TEMPLATE_V3__) return;
+    window.__LH_TEMPLATE_V3__ = true;
 
     const ID_KEY = /legal[_\-]?hold[_\-]?template[_\-]?id/i;
     const NAME_KEYS = [
@@ -306,8 +307,8 @@
           if (!dragging) return;
           const dx = e.clientX - sx;
           const dy = e.clientY - sy;
-          host.style.right = `${Math.max(8, ox - dx)}px`;
-          host.style.bottom = `${Math.max(8, oy - dy)}px`;
+          host.style.right = `${Math.max(8, ox + dx)}px`;
+          host.style.bottom = `${Math.max(8, oy + dy)}px`;
         });
         window.addEventListener('mouseup', () => dragging = false);
       })();
@@ -339,7 +340,7 @@
       const origOpen = XMLHttpRequest.prototype.open;
       const origSend = XMLHttpRequest.prototype.send;
       XMLHttpRequest.prototype.open = function (m, u, a, usr, pw) {
-        this.__lh_url = typeof u === 'string' ? u : '';
+
         return origOpen.apply(this, arguments);
       };
       XMLHttpRequest.prototype.send = function (body) {
