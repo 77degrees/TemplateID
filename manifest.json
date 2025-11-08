@@ -1,15 +1,15 @@
 {
   "manifest_version": 3,
   "name": "Legal Hold Template ID Extractor",
-  "description": "Extracts and displays legal hold template IDs and inferred names from JSON network traffic.",
-  "version": "1.1.0",
+  "description": "Extracts Legal Hold Template IDs on the Exterro Legal Hold Templates settings page.",
+  "version": "1.1.1",
   "permissions": [],
-  "host_permissions": [
-    "<all_urls>"
-  ],
   "content_scripts": [
     {
-      "matches": ["<all_urls>"],
+      "matches": [
+        "https://*.exterro.net/fusion/matter/index.html*",
+        "https://*.exterro.com/fusion/matter/index.html*"
+      ],
       "js": ["content.js"],
       "run_at": "document_start"
     }
