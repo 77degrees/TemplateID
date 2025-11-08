@@ -94,6 +94,10 @@
     }
 
     (function buildPanel() {
+      // Create AbortController for cleanup of event listeners
+      const abortController = new AbortController();
+      const signal = abortController.signal;
+
       const host = document.createElement('div');
       host.id = 'lh-template-v3-shadow-host';
       Object.assign(host.style, {
@@ -309,13 +313,22 @@
           const dy = e.clientY - sy;
           host.style.right = `${Math.max(8, ox + dx)}px`;
           host.style.bottom = `${Math.max(8, oy + dy)}px`;
-        });
-        window.addEventListener('mouseup', () => dragging = false);
+        }, { signal });
+        window.addEventListener('mouseup', () => dragging = false, { signal });
       })();
 
       window.addEventListener('keydown', (e) => {
         if (TOGGLE_HOTKEY(e)) host.classList.toggle('hidden');
-      });
+      }, { signal });
+
+      // Cleanup function to remove all event listeners
+      // This can be called if the extension needs to be disabled or re-initialized
+      window.__LH_TEMPLATE_V3_CLEANUP__ = () => {
+        abortController.abort();
+        host.remove();
+        delete window.__LH_TEMPLATE_V3__;
+        delete window.__LH_TEMPLATE_V3_CLEANUP__;
+      };
     })();
 
     (function hookFetch() {
