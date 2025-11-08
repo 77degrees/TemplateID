@@ -269,9 +269,11 @@
         const a = document.createElement('a');
         a.href = url;
         a.download = `Starbucks_LegalHoldTemplates_${new Date().toISOString().replace(/[:.]/g, '-')}.csv`;
-        document.body.appendChild(a);
+        // Use document.body if available, else document.documentElement, else shadow host
+        const parent = document.body || document.documentElement || host;
+        parent.appendChild(a);
         a.click();
-        document.body.removeChild(a);
+        parent.removeChild(a);
         URL.revokeObjectURL(url);
       });
 
