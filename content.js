@@ -93,7 +93,13 @@
       }
     }
 
-    (function buildPanel() {
+    function buildPanel() {
+      if (!document.documentElement) {
+        if (document.readyState === 'loading') {
+          document.addEventListener('DOMContentLoaded', buildPanel, { once: true });
+        }
+        return;
+      }
       const host = document.createElement('div');
       host.id = 'lh-template-v3-shadow-host';
       Object.assign(host.style, {
@@ -316,7 +322,8 @@
           if (TOGGLE_HOTKEY(e)) host.classList.toggle('hidden');
         });
       })();
-    })();
+    }
+    buildPanel();
 
     (function hookFetch() {
       const origFetch = window.fetch;
