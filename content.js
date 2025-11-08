@@ -93,7 +93,7 @@
       }
     }
 
-    (function buildPanel() {
+    function buildPanel() {
       const host = document.createElement('div');
       host.id = 'lh-template-v3-shadow-host';
       Object.assign(host.style, {
@@ -106,7 +106,7 @@
         zIndex: 2147483647,
         fontFamily: 'SoDo Sans, Segoe UI, Roboto, Arial, sans-serif'
       });
-      document.documentElement.appendChild(host);
+      (document.head || document.documentElement).appendChild(host);
       const shadow = host.attachShadow({ mode: 'open' });
 
       const style = document.createElement('style');
@@ -316,7 +316,14 @@
       window.addEventListener('keydown', (e) => {
         if (TOGGLE_HOTKEY(e)) host.classList.toggle('hidden');
       });
-    })();
+    }
+
+    // Wait for DOM to be ready before building panel
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', buildPanel);
+    } else {
+      buildPanel();
+    }
 
     (function hookFetch() {
       const origFetch = window.fetch;
