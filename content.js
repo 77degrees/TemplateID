@@ -108,6 +108,10 @@
       });
       document.documentElement.appendChild(host);
       const shadow = host.attachShadow({ mode: 'open' });
+      
+      // AbortController for managing window event listeners
+      const abortController = new AbortController();
+      const signal = abortController.signal;
 
       const style = document.createElement('style');
       style.textContent = `
@@ -309,13 +313,13 @@
           const dy = e.clientY - sy;
           host.style.right = `${Math.max(8, ox + dx)}px`;
           host.style.bottom = `${Math.max(8, oy + dy)}px`;
-        });
-        window.addEventListener('mouseup', () => dragging = false);
+        }, { signal });
+        window.addEventListener('mouseup', () => dragging = false, { signal });
       })();
 
       window.addEventListener('keydown', (e) => {
         if (TOGGLE_HOTKEY(e)) host.classList.toggle('hidden');
-      });
+      }, { signal });
     })();
 
     (function hookFetch() {
