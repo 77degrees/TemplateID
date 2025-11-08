@@ -295,27 +295,28 @@
 
       (function enableDrag() {
         const drag = shadow.getElementById('drag');
+        const controller = new AbortController();
         let sx = 0, sy = 0, ox = 0, oy = 0, dragging = false;
         drag.addEventListener('mousedown', (e) => {
           dragging = true;
           sx = e.clientX; sy = e.clientY;
           const r = host.getBoundingClientRect();
-          ox = r.right; oy = r.bottom;
+          ox = window.innerWidth - r.right;
+          oy = window.innerHeight - r.bottom;
           e.preventDefault();
         });
         window.addEventListener('mousemove', (e) => {
           if (!dragging) return;
           const dx = e.clientX - sx;
           const dy = e.clientY - sy;
-          host.style.right = `${Math.max(8, ox + dx)}px`;
-          host.style.bottom = `${Math.max(8, oy + dy)}px`;
-        });
-        window.addEventListener('mouseup', () => dragging = false);
+          host.style.right = `${Math.max(8, ox - dx)}px`;
+          host.style.bottom = `${Math.max(8, oy - dy)}px`;
+        }, { signal: controller.signal });
+        window.addEventListener('mouseup', () => dragging = false, { signal: controller.signal });
+        window.addEventListener('keydown', (e) => {
+          if (TOGGLE_HOTKEY(e)) host.classList.toggle('hidden');
+        }, { signal: controller.signal });
       })();
-
-      window.addEventListener('keydown', (e) => {
-        if (TOGGLE_HOTKEY(e)) host.classList.toggle('hidden');
-      });
     })();
 
     (function hookFetch() {
@@ -337,12 +338,7 @@
     })();
 
     (function hookXHR() {
-      const origOpen = XMLHttpRequest.prototype.open;
       const origSend = XMLHttpRequest.prototype.send;
-      XMLHttpRequest.prototype.open = function (m, u, a, usr, pw) {
-
-        return origOpen.apply(this, arguments);
-      };
       XMLHttpRequest.prototype.send = function (body) {
         this.addEventListener('load', function () {
           try {
